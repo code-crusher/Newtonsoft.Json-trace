@@ -97,9 +97,9 @@ namespace Newtonsoft.Json.Utilities
             LocalBuilder localConvertible = generator.DeclareLocal(typeof(IConvertible));
             LocalBuilder localObject = generator.DeclareLocal(typeof(object));
 
-            OpCode variableAddressOpCode = args.Length < 256 ? OpCodes.Ldloca_S : OpCodes.Ldloca;
-            OpCode variableLoadOpCode = args.Length < 256 ? OpCodes.Ldloc_S : OpCodes.Ldloc;
-
+            // The long-form local opcodes are used because the short-form opcodes can only
+            // address local positions up to 255. The number of locals grows with the number
+            // of parameters, so a method with many parameters would exceed that limit.
             for (int i = 0; i < args.Length; i++)
             {
                 ParameterInfo parameter = args[i];
@@ -125,7 +125,7 @@ namespace Newtonsoft.Json.Utilities
                             generator.Emit(OpCodes.Brtrue_S, skipSettingDefault);
 
                             // parameter has no value, initialize to default
-                            generator.Emit(variableAddressOpCode, localVariable);
+                            generator.Emit(OpCodes.Ldloca, localVariable);
                             generator.Emit(OpCodes.Initobj, parameterType);
                             generator.Emit(OpCodes.Br_S, finishedProcessingParameter);
 
@@ -133,7 +133,7 @@ namespace Newtonsoft.Json.Utilities
                             generator.MarkLabel(skipSettingDefault);
                             generator.PushArrayInstance(argsIndex, i);
                             generator.UnboxIfNeeded(parameterType);
-                            generator.Emit(OpCodes.Stloc_S, localVariable);
+                            generator.Emit(OpCodes.Stloc, localVariable);
 
                             // parameter finished, we out!
                             generator.MarkLabel(finishedProcessingParameter);
@@ -141,16 +141,16 @@ namespace Newtonsoft.Json.Utilities
                         else
                         {
                             generator.UnboxIfNeeded(parameterType);
-                            generator.Emit(OpCodes.Stloc_S, localVariable);
+                            generator.Emit(OpCodes.Stloc, localVariable);
                         }
                     }
 
-                    generator.Emit(variableAddressOpCode, localVariable);
+                    generator.Emit(OpCodes.Ldloca, localVariable);
                 }
                 else if (parameterType.IsValueType())
                 {
                     generator.PushArrayInstance(argsIndex, i);
-                    generator.Emit(OpCodes.Stloc_S, localObject);
+                    generator.Emit(OpCodes.Stloc, localObject);
 
                     // have to check that value type parameters aren't null
                     // otherwise they will error when unboxed
@@ -158,14 +158,14 @@ namespace Newtonsoft.Json.Utilities
                     Label finishedProcessingParameter = generator.DefineLabel();
 
                     // check if parameter is not null
-                    generator.Emit(OpCodes.Ldloc_S, localObject);
+                    generator.Emit(OpCodes.Ldloc, localObject);
                     generator.Emit(OpCodes.Brtrue_S, skipSettingDefault);
 
                     // parameter has no value, initialize to default
                     LocalBuilder localVariable = generator.DeclareLocal(parameterType);
-                    generator.Emit(variableAddressOpCode, localVariable);
+                    generator.Emit(OpCodes.Ldloca, localVariable);
                     generator.Emit(OpCodes.Initobj, parameterType);
-                    generator.Emit(variableLoadOpCode, localVariable);
+                    generator.Emit(OpCodes.Ldloc, localVariable);
                     generator.Emit(OpCodes.Br_S, finishedProcessingParameter);
 
                     // argument has value, try to convert it to parameter type
@@ -183,19 +183,19 @@ namespace Newtonsoft.Json.Utilities
 
                             // check if argument type is an exact match for parameter type
                             // in this case we may use cheap unboxing instead
-                            generator.Emit(OpCodes.Ldloc_S, localObject);
+                            generator.Emit(OpCodes.Ldloc, localObject);
                             generator.Emit(OpCodes.Isinst, parameterType);
                             generator.Emit(OpCodes.Brtrue_S, skipConvertible);
 
                             // types don't match, check if argument implements IConvertible
-                            generator.Emit(OpCodes.Ldloc_S, localObject);
+                            generator.Emit(OpCodes.Ldloc, localObject);
                             generator.Emit(OpCodes.Isinst, typeof(IConvertible));
-                            generator.Emit(OpCodes.Stloc_S, localConvertible);
-                            generator.Emit(OpCodes.Ldloc_S, localConvertible);
+                            generator.Emit(OpCodes.Stloc, localConvertible);
+                            generator.Emit(OpCodes.Ldloc, localConvertible);
                             generator.Emit(OpCodes.Brfalse_S, skipConvertible);
 
                             // convert argument to parameter type
-                            generator.Emit(OpCodes.Ldloc_S, localConvertible);
+                            generator.Emit(OpCodes.Ldloc, localConvertible);
                             generator.Emit(OpCodes.Ldnull);
                             generator.Emit(OpCodes.Callvirt, toParameterTypeMethod);
                             generator.Emit(OpCodes.Br_S, finishedProcessingParameter);
@@ -206,7 +206,7 @@ namespace Newtonsoft.Json.Utilities
 
                     // we got here because either argument type matches parameter (conversion will succeed),
                     // or argument type doesn't match parameter, but we're out of options (conversion will fail)
-                    generator.Emit(OpCodes.Ldloc_S, localObject);
+                    generator.Emit(OpCodes.Ldloc, localObject);
 
                     generator.UnboxIfNeeded(parameterType);
                     
